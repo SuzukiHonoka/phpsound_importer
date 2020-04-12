@@ -9,14 +9,20 @@ import subprocess
 
 print("Init VARS..")
 # sql
-sql_insert = "INSERT FROM tracks (id,uid,title,public,description,,name,tag,art,size) VALUES (" \
-             "f_uid,f_title,f_public,f_description,f_,f_name,f_tag,f_art,f_size) "
-sql_update = "UPDATE tracker SET uid=f_uid,title=f_title,public=f_public,description=f_description" \
-             ",=f_,name=f_name,tag=f_tag,art=f_art,size=f_size WHERE id=f_id"
-sql_last_id = "select id from tracks ORDER BY id DESC LIMIT 1"
+sql_insert = "INSERT INTO tracks (id,uid,title,public,description,name,tag,art,size) VALUES (f_id,f_uid,f_title," \
+             "f_public," \
+             "f_description,f_name,f_tag,f_art,f_size);"
+sql_update = "UPDATE tracker SET uid=f_uid,title=f_title,public=f_public,description=f_description,name=f_name," \
+             "tag=f_tag,art=f_art,size=f_size WHERE id=f_id"
+sql_last_id = "SELECT id FROM tracks ORDER BY id DESC LIMIT 1"
 # cmd
 cmd_lns = "ln -s src dest"
+# symbol
+file_d_s = '/'
+tran_m_s = '\"'
+coma_s = ';'
 # core
+phpsound_uid = '2'
 music_na_file = os.path.abspath('.') + '/music_na.json'
 music_src_dir = "/media/Lexar64/Music"
 music_import_dir = "/media/Lexar64/insides/phpsound/uploads/tracks"
@@ -24,7 +30,8 @@ music_cover_dir = "/media/Lexar64/insides/phpsound/uploads/covers"
 music_list = []
 music_format = ["flac", "wav", "mp3", "ogg"]
 
-# Key = Music_Path Value = List [0]=artist [1]=title [2]=cover
+# Key = Music_Path Value = List (Ava_Len=6) [0]=artist [1]=title [2]=cover [3]=soft_link [4]=music_size [5]=sql_status
+
 music_na = {}
 # Load
 if os.path.exists(music_na_file):
@@ -95,20 +102,53 @@ for lns in music_list:
     mname = 'ipm_' + str(time.time()).replace('.', '_') + '.' + end_f
     music_na[lns].append(mname)
     subprocess.call(['ln', '-s', music_src_dir + '/' + lns, music_import_dir + '/' + mname])
-    os.system(f_cmd)
     print('Music:', bad_name(lns), 'Soft_Link:', mname)
+# calculate size
+for ps in music_list:
+    music_na[ps].append(os.path.getsize(music_src_dir + '/' + ps))
 
+print('Preparing to connect mysql..')
+db = pymysql.connect(host=mysql_ip,
+                     user=mysql_ur,
+                     password=mysql_pd,
+                     db=mysql_db,
+                     port=mysql_port,
+                     charset='utf8mb4', )
+print('Done.')
+last_id = 0
+with db.cursor() as cur:
+    if last_id == 0:
+        cur.execute(sql_last_id)
+        last_id = cur.fetchone()[0]
+        print('Last ID:', last_id)
+# Generate SQL queries
+print('Generating sql queries commands..')
+sql_queries = []
+# Key = Music_Path Value = List (Ava_Len=6) [0]=artist [1]=title [2]=cover [3]=soft_link [4]=music_size [5]=sql_id
+music_na_keys = list(music_na.keys())
+for pk in music_na_keys:
+    t_na = music_na[pk]
+    if len(t_na) != 6 or t_na[4] != 1:
+        last_id += 1
+        sql_p = sql_insert.replace('f_id',str(last_id)).replace('f_uid', phpsound_uid).replace('f_title',\
+            tran_m_s + t_na[0] + t_na[1] + tran_m_s).replace('f_public', '1')\
+            .replace('f_description', tran_m_s + 'From phpsound_importer by starx.' + tran_m_s).replace(
+            'f_name', tran_m_s + t_na[3] + tran_m_s).replace('f_tag', tran_m_s + t_na[0] + tran_m_s).replace('f_art',\
+            tran_m_s + t_na[2] + tran_m_s).replace('f_size', str(t_na[4]))
+        music_na[pk].append(str(last_id))
+        sql_queries.append(sql_p)
+# # Mix whole list to a string
+# sql_queries_str = ''
+# for pq in sql_queries:
+#     sql_queries_str += bad_name(pq)
+# Final queries
+with db.cursor() as final:
+    for pq in sql_queries:
+        print('Execute:', bad_name(pq))
+        final.execute(pq)
+        print('Result:', final.fetchone())
+db.commit()
+db.close()
 # Save dict
 with open(music_na_file, 'w+') as fd:
     fd.write(json.dumps(music_na))
-
-print('Preparing to connect mysql..')
-# db = pymysql.connect(host=mysql_ip,
-#                      user=mysql_ur,
-#                      password=mysql_pd,
-#                      db=mysql_db,
-#                      port=mysql_port,
-#                      charset='utf8mb4', )
-# cursor = db.cursor()
-#
-# cursor.execute()
